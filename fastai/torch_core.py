@@ -2,17 +2,17 @@
 
 __all__ = ['progress_bar', 'master_bar', 'subplots', 'show_image', 'show_titled_image', 'show_images', 'ArrayBase',
            'ArrayImageBase', 'ArrayImage', 'ArrayImageBW', 'ArrayMask', 'tensor', 'set_seed', 'get_random_states',
-           'set_random_states', 'no_random', 'get_random_states', 'set_random_states', 'no_random', 'unsqueeze',
-           'unsqueeze_', 'apply', 'maybe_gather', 'to_detach', 'to_half', 'to_float', 'default_device', 'to_device',
-           'to_cpu', 'to_np', 'to_concat', 'TensorBase', 'TensorCategory', 'TensorMultiCategory', 'TensorImageBase',
-           'TensorImage', 'TensorImageBW', 'TensorMask', 'TitledTensorScalar', 'concat', 'Chunks', 'show_title',
-           'ShowTitle', 'TitledInt', 'TitledFloat', 'TitledStr', 'TitledTuple', 'get_empty_df', 'display_df',
-           'get_first', 'one_param', 'item_find', 'find_device', 'find_bs', 'np_func', 'Module', 'get_model', 'one_hot',
-           'one_hot_decode', 'params', 'trainable_params', 'norm_types', 'norm_bias_params', 'batch_to_samples',
-           'logit', 'num_distrib', 'rank_distrib', 'distrib_barrier', 'base_doc', 'doc', 'nested_reorder',
-           'make_cross_image', 'show_image_batch', 'requires_grad', 'init_default', 'cond_init', 'apply_leaf',
-           'apply_init', 'script_use_ctx', 'script_save_ctx', 'script_fwd', 'script_bwd', 'grad_module',
-           'flatten_check']
+           'set_random_states', 'no_random', 'get_random_states', 'set_random_states', 'no_random', 'get_random_states',
+           'set_random_states', 'no_random', 'unsqueeze_', 'apply', 'to_detach', 'to_float', 'default_device', 'to_cpu',
+           'to_np', 'to_concat', 'TensorBase', 'TensorCategory', 'TensorMultiCategory', 'TensorImageBase',
+           'TensorImageBW', 'TensorMask', 'TitledTensorScalar', 'concat', 'Chunks', 'show_title', 'get_empty_df',
+           'display_df', 'show_title', 'ShowTitle', 'TitledInt', 'TitledFloat', 'TitledStr', 'TitledTuple',
+           'get_empty_df', 'display_df', 'get_first', 'one_param', 'item_find', 'find_device', 'find_bs', 'np_func',
+           'Module', 'get_model', 'one_hot', 'one_hot_decode', 'params', 'trainable_params', 'norm_types',
+           'norm_bias_params', 'batch_to_samples', 'logit', 'num_distrib', 'rank_distrib', 'distrib_barrier',
+           'base_doc', 'doc', 'nested_reorder', 'make_cross_image', 'show_image_batch', 'requires_grad', 'init_default',
+           'cond_init', 'apply_leaf', 'apply_init', 'script_use_ctx', 'script_save_ctx', 'script_fwd', 'script_bwd',
+           'grad_module', 'flatten_check']
 
 # Cell
 from .imports import *
@@ -207,10 +207,35 @@ def no_random(seed=42,reproducible=True):
         set_random_states(**states)
 
 # Cell
-def unsqueeze(x, dim=-1, n=1):
-    "Same as `torch.unsqueeze` but can add `n` dims"
-    for _ in range(n): x = x.unsqueeze(dim)
-    return x
+def get_random_states():
+    "Gets states for `random`, `torch`, and `numpy` random number generators"
+    return {'random_state':random.getstate(),
+            'numpy_state':np.random.get_state(),
+            'torch_state':torch.get_rng_state(),
+            'torch_cuda_state':torch.cuda.get_rng_state_all(),
+            'torch_deterministic':torch.backends.cudnn.deterministic,
+            'torch_benchmark':torch.backends.cudnn.benchmark}
+
+# Cell
+def set_random_states(random_state,numpy_state,torch_state,torch_cuda_state,torch_deterministic,torch_benchmark):
+    "Set states for `random`, `torch`, and `numpy` random number generators"
+    random.setstate(random_state)
+    np.random.set_state(numpy_state)
+    torch.set_rng_state(torch_state)
+    torch.cuda.set_rng_state_all(torch_cuda_state)
+    torch.backends.cudnn.deterministic=torch_deterministic
+    torch.backends.cudnn.benchmark=torch_benchmark
+
+# Cell
+@contextmanager
+def no_random(seed=42,reproducible=True):
+    "Stores and retrieves state of random number generators. Sets random seed for `random`, `torch`, and `numpy`."
+    states = get_random_states()
+    set_seed(seed,reproducible=reproducible)
+    try:
+        yield #we are managing global variables
+    finally:
+        set_random_states(**states)
 
 # Cell
 def unsqueeze_(x, dim=-1, n=1):
@@ -231,15 +256,6 @@ def apply(func, x, *args, **kwargs):
     return res if x is None else retain_type(res, x)
 
 # Cell
-def maybe_gather(x, axis=0):
-    "Gather copies of `x` on `axis` (if training is distributed)"
-    if num_distrib()<=1: return x
-    ndim = x.ndim
-    res = [x.new_zeros(*x.shape if ndim > 0 else (1,)) for _ in range(num_distrib())]
-    torch.distributed.all_gather(res, x.contiguous() if ndim > 0 else x[None])
-    return torch.cat(res, dim=axis) if ndim > 0 else torch.cat(res, dim=axis).mean()
-
-# Cell
 def to_detach(b, cpu=True, gather=True):
     "Recursively detach lists of tensors in `b `; put them on the CPU if `cpu=True`."
     def _inner(x, cpu=True, gather=True):
@@ -250,18 +266,9 @@ def to_detach(b, cpu=True, gather=True):
     return apply(_inner, b, cpu=cpu, gather=gather)
 
 # Cell
-def to_half(b):
-    "Recursively map lists of tensors in `b ` to FP16."
-    return apply(lambda x: x.half() if torch.is_floating_point(x) else x, b)
-
-# Cell
 def to_float(b):
     "Recursively map lists of int tensors in `b ` to float."
     return apply(lambda x: x.float() if torch.is_floating_point(x) else x, b)
-
-# Cell
-# None: True if available; True: error if not available; False: use CPU
-defaults.use_cuda = None
 
 # Cell
 def default_device(use_cuda=-1):
@@ -270,14 +277,6 @@ def default_device(use_cuda=-1):
     use = defaults.use_cuda or (torch.cuda.is_available() and defaults.use_cuda is None)
     assert torch.cuda.is_available() or not use
     return torch.device(torch.cuda.current_device()) if use else torch.device('cpu')
-
-# Cell
-def to_device(b, device=None):
-    "Recursively put `b` on `device`."
-    if defaults.use_cuda==False: device='cpu'
-    elif device is None: device=default_device()
-    def _inner(o): return o.to(device, non_blocking=True) if isinstance(o,Tensor) else o.to_device(device) if hasattr(o, "to_device") else o
-    return apply(_inner, b)
 
 # Cell
 def to_cpu(b):
@@ -389,9 +388,6 @@ class TensorImageBase(TensorBase):
         return show_image(self, ctx=ctx, **{**self._show_args, **kwargs})
 
 # Cell
-class TensorImage(TensorImageBase): pass
-
-# Cell
 class TensorImageBW(TensorImage): _show_args = ArrayImageBW._show_args
 
 # Cell
@@ -462,6 +458,49 @@ class Chunks:
         docidx = np.searchsorted(self.cumlens, i+1)-1
         cl = self.cumlens[docidx]
         return docidx,i-cl
+
+# Cell
+def show_title(o, ax=None, ctx=None, label=None, color='black', **kwargs):
+    "Set title of `ax` to `o`, or print `o` if `ax` is `None`"
+    ax = ifnone(ax,ctx)
+    if ax is None: print(o)
+    elif hasattr(ax, 'set_title'):
+        t = ax.title.get_text()
+        if len(t) > 0: o = t+'\n'+str(o)
+        ax.set_title(o, color=color)
+    elif isinstance(ax, pd.Series):
+        while label in ax: label += '_'
+        ax = ax.append(pd.Series({label: o}))
+    return ax
+
+# Cell
+@patch
+def truncate(self:TitledStr, n):
+    "Truncate self to `n`"
+    words = self.split(' ')[:n]
+    return TitledStr(' '.join(words))
+
+# Cell
+if not hasattr(pd.DataFrame,'_old_init'): pd.DataFrame._old_init = pd.DataFrame.__init__
+
+# Cell
+@patch
+def __init__(self:pd.DataFrame, data=None, index=None, columns=None, dtype=None, copy=False):
+    if data is not None and isinstance(data, Tensor): data = to_np(data)
+    self._old_init(data, index=index, columns=columns, dtype=dtype, copy=copy)
+
+# Cell
+def get_empty_df(n):
+    "Return `n` empty rows of a dataframe"
+    df = pd.DataFrame(index = range(n))
+    return [df.iloc[i] for i in range(n)]
+
+# Cell
+def display_df(df):
+    "Display `df` in a notebook or defaults to print"
+    try: from IPython.display import display, HTML
+    except: return print(df)
+    display(HTML(df.to_html()))
 
 # Cell
 def show_title(o, ax=None, ctx=None, label=None, color='black', **kwargs):
