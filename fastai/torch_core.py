@@ -476,7 +476,7 @@ def display_df(df):
     "Display `df` in a notebook or defaults to print"
     try: from IPython.display import display, HTML
     except: return print(df)
-    display(HTML(df.to_html()))
+    displayHTML(df.to_html())
 
 # Cell
 def get_first(c):

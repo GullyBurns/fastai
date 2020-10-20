@@ -119,3 +119,9 @@ venv.bak/
 
 # Mac stuff
 .DS_Store
+
+# Gully stuff
+.history
+fastai-env/
+
+
