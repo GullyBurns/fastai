@@ -500,7 +500,8 @@ def display_df(df):
     "Display `df` in a notebook or defaults to print"
     try: from IPython.display import display, HTML
     except: return print(df)
-    display(HTML(df.to_html()))
+    return print(df)
+    #display(HTML(df.to_html()))
 
 # Cell
 def show_title(o, ax=None, ctx=None, label=None, color='black', **kwargs):
